@@ -27,7 +27,7 @@ class CentralityBatchAnalyzer:
         :param centralities: centralities list
         """
         self.G = G
-        self.A = np.asarray(nx.to_numpy_matrix(G))
+        self.A = nx.to_numpy_array(G)  # np.asarray(nx.to_numpy_matrix(G))
         self.centralities = list(centralities) if centralities else self.generate_centralities()
         self.id_to_centrality = {c.id: c for c in self.centralities}
         self.centrality_to_nvalues = dict.fromkeys(self.centralities, {})

@@ -1,47 +1,61 @@
 import numpy as np
 import networkx as nx
+from .network_generation import *
 from .centralities_batch import CentralityBatchAnalyzer, set_values_precision
 from collections import defaultdict
 
 
-def nonisomorphic_graphs(graphs):
+def generator_of_general_graphs(geng_path, n0=4, n1=9, nmax=11):
     """
-    Filtering isomorphic graphs
-    :param graphs: list of graphs
-    :return: list of non-isomorphic graphs
+    General procedure enumerating the entire set of connected graphs
+    :param geng_path: path to geng utility
+    :param n0: step 2 starting graph order
+    :param n1: step 3 starting graph order
+    :param nmax: reasonable graph order
+    :return: graph sequence
     """
-    noniso_graphs = []
-    for i, G in enumerate(graphs):
-        for j in range(i):
-            G_prev = graphs[j]
-            if nx.is_isomorphic(G, G_prev):
-                break
-        else:
-            noniso_graphs.append(G)
-    return noniso_graphs
+    # step 2.1 graphs
+    for n in range(n0, n1):
+        for g in nauty_geng(geng_path, options=f'{n} {n} -c', debug=False):
+            yield g
+    # step 2.2 graphs
+    for n in range(n0, n1):
+        for g in nauty_geng(geng_path, options=f'{n} {n-1} -c', debug=False):
+            yield g
+    # step 2.3 graphs
+    for n in range(n0, n1):
+        for g in nauty_geng(geng_path, options=f'{n} {n+1} -c', debug=False):
+            yield g
+    # step 3.1 graphs
+    for n in range(n1, nmax + 1):
+        # step 3.1.1
+        # (1)-(3)
+        for g in nauty_geng(geng_path, options=f'{n} {n} -c', debug=False):
+            yield g
+        for g in nauty_geng(geng_path, options=f'{n} {n-1} -c', debug=False):
+            yield g
+        if n+1 <= 2*n-8:
+            for g in nauty_geng(geng_path, options=f'{n} {n+1}:{2*n-8} -c', debug=False):
+                yield g
+        # step 3.1.2 (4)
+        for ns in range(n0, n+1):
+            if ns+n-7 >= n-1:  # connected condition
+                for g in nauty_geng(geng_path, options=f'{n} {ns+n-7} -c', debug=False):
+                    yield g
 
 
-def generate_unicyclic_trees(n, max_degree=4):
+def generator_of_unicycle_trees(n0, nmax, dmax):
     """
-    Generating 1-trees
-
-    :param n: 1-tree size
-    :param max_degree: maximal degree
-    :return: list of 1-trees
+    General procedure enumerating the entire set of connected u-trees
+    :param n0: min nodes
+    :param nmax: max nodes
+    :param dmax: max node degree
+    :return: u-tree sequence
     """
-    trees = list(nx.nonisomorphic_trees(n, create="graph"))
-    u_trees = []
-    for t in trees:
-        # add edge
-        for i in range(n):
-            for j in range(i + 1, n):
-                if not t.has_edge(i, j):
-                    ut = t.copy()
-                    ut.add_edge(i, j)
-                    _degrees = np.array([ut.degree[n] for n in ut.nodes()])
-                    if not (np.all(_degrees == 2)) and (np.max(_degrees) <= max_degree):
-                        u_trees.append(ut)
-    return nonisomorphic_graphs(u_trees)
+    for n in range(n0, nmax + 1):
+        u_trees = generate_unicyclic_trees(n, max_degree=dmax)
+        for u in u_trees:
+            yield u
 
 
 class CentralityPairs:
@@ -82,7 +96,7 @@ class CentralityPairs:
     def as_id_pair(self, pair):
         """
         Pair of measures' identifiers
-        :param pair: pair of measures' indexes
+        :param pair: a pair of measures' indexes
         :return:
         """
         i1, i2 = pair
@@ -94,18 +108,20 @@ class CentralityDistinguisher:
     Finding distinguishing triples for a list of centralities
     """
 
-    def __init__(self, min_nodes=4, max_nodes=8, max_degree=4, precision=6):
+    def __init__(self, min_nodes=4, med_nodes=8, max_nodes=11, max_degree=4, geng_path=None, precision=6):
         """
         :param min_nodes: minimum number of test graph nodes
         :param max_nodes: maximum number of test graph nodes
+        :param med_nodes: interim number of test graph nodes
         :param max_degree: maximum node degree of the test graph
-        :param corr_threshold: correlation value for distinguishing measures
+        :param geng_path: path to geng utility
         :param precision:  rounding of centrality values
         """
         self.min_nodes = min_nodes
+        self.med_nodes = med_nodes
         self.max_nodes = max_nodes
         self.max_degree = max_degree
-
+        self.geng_path = geng_path
         self.precision = precision
 
         self.c_list = CentralityBatchAnalyzer.generate_centralities()
@@ -138,7 +154,7 @@ class CentralityDistinguisher:
         matrix = np.sign(np.subtract.outer(vals1, vals1)) != np.sign(np.subtract.outer(vals2, vals2))
         indices = np.argwhere(matrix)
         if indices.size == 0:
-            return  [], matrix
+            return [], matrix
         else:
             return [(node_list[idx[0]], node_list[idx[1]]) for idx in indices if idx[0] < idx[1]], matrix
 
@@ -147,18 +163,23 @@ class CentralityDistinguisher:
         Distinguish measures of centrality
         :return: number of undistinguished measures
         """
-        # 1-tree generation
+        # graphs for distinguishing measures
         self.graphs = []
-        for n_nodes in range(self.min_nodes, self.max_nodes+1):
-            u_trees = generate_unicyclic_trees(n_nodes, max_degree=self.max_degree)
-            self.graphs.extend(u_trees)
 
         # Calculation of centrality measures
         self.distinguishing_number_to_cc2uvs = defaultdict(dict)
         self.distinguishing_number_to_uv2ccs = defaultdict(dict)
 
-        for number, u_tree in enumerate(self.graphs):
-            cba = CentralityBatchAnalyzer(G=u_tree, centralities=self.c_list)
+        # graph generator
+        if self.geng_path is None:
+            gen = generator_of_unicycle_trees(self.min_nodes, self.med_nodes, self.max_degree)
+        else:
+            gen = generator_of_general_graphs(self.geng_path, n0=self.min_nodes, n1=self.med_nodes+1,
+                                              nmax=self.max_nodes)
+        for number, dgraph in enumerate(gen):
+            self.graphs.append(dgraph)
+
+            cba = CentralityBatchAnalyzer(G=dgraph, centralities=self.c_list)
             cba.compute_centralities(precision=self.precision)
             self.analyzers.append(cba)
 
@@ -175,7 +196,11 @@ class CentralityDistinguisher:
                         else:
                             self.distinguishing_number_to_uv2ccs[number][uv].add((c1.id, c2.id))
 
-                    self.c_pairs.update_distinguished({(ci1, ci2),})
+                    self.c_pairs.update_distinguished({(ci1, ci2), })
+
+            # all measures are distinguished
+            if len(self.c_pairs.get_undistinguished()) == 0:
+                break
 
         return len(self.c_pairs.get_undistinguished())
 
@@ -210,7 +235,7 @@ def greedy_distinguishing_G_u_v(cd, un_ccs):
     :return: index, u, v
     """
     max_grp_sz = 100000
-    best_number, best_uv, best_na  = None, (None, None), 0
+    best_number, best_uv, best_na = None, (None, None), 0
 
     for graph_number, uv_to_ccs in cd.distinguishing_number_to_uv2ccs.items():
         cba = cd.analyzers[graph_number]
@@ -244,7 +269,7 @@ def voting_distinguishing_G_u_v(cd, un_ccs):
     """
     min_delta = 1.
     best_ratio = 2./3.
-    best_number, best_uv, best_na  = None, (None, None), 0
+    best_number, best_uv, best_na = None, (None, None), 0
 
     for graph_number, uv_to_ccs in cd.distinguishing_number_to_uv2ccs.items():
         cba = cd.analyzers[graph_number]

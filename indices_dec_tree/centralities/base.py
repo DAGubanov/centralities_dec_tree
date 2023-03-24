@@ -18,7 +18,7 @@ def get_adj_matrix(G):
     :param G: graph
     :return: adjacency matrix
     """
-    return np.asarray(nx.to_numpy_matrix(G))
+    return nx.to_numpy_array(G)  # np.asarray(nx.to_numpy_matrix(G))
 
 
 def create_centrality_dict(G, cc):
@@ -319,7 +319,7 @@ class CentralityBetaCurrentFlow(GraphBasedCentrality):
     }
 
     def compute(self, G):
-        A = np.asarray(nx.to_numpy_matrix(G))
+        A = nx.to_numpy_array(G)  # np.asarray(nx.to_numpy_matrix(G))
         n, __ = A.shape
         L = laplacian_matrix(A)
 
@@ -348,7 +348,7 @@ class CentralityBridging(GraphBasedCentrality):
     }
 
     def compute(self, G):
-        A = np.asarray(nx.to_numpy_matrix(G))
+        A = nx.to_numpy_array(G)  # np.asarray(nx.to_numpy_matrix(G))
         n, __ = A.shape
         deg = np.sum(A, axis=1)
 
@@ -370,7 +370,7 @@ class CentralityEstrada(GraphBasedCentrality):
     }
 
     def compute(self, G):
-        A = np.asarray(nx.to_numpy_matrix(G))
+        A = nx.to_numpy_array(G)  # np.asarray(nx.to_numpy_matrix(G))
         cc = np.diag(expm(A))
         return create_centrality_dict(G, cc)
 
@@ -385,7 +385,7 @@ class CentralityTotalComm(GraphBasedCentrality):
     }
 
     def compute(self, G):
-        A = np.asarray(nx.to_numpy_matrix(G))
+        A = nx.to_numpy_array(G)  # np.asarray(nx.to_numpy_matrix(G))
         cc = np.sum(expm(A), axis=1)
         return create_centrality_dict(G, cc)
 
@@ -597,7 +597,7 @@ class CentralityConnectednessPower(GraphBasedCentrality):
     default_params = {}
 
     def compute(self, G):
-        X = np.asarray(nx.to_numpy_matrix(G))
+        X = nx.to_numpy_array(G)  # np.asarray(nx.to_numpy_matrix(G))
         n = X.shape[0]
         c = np.zeros(n)
         for i in range(n):
@@ -699,7 +699,7 @@ class CentralityConnectivity(GraphBasedCentrality):
     default_params = {}
 
     def compute(self, G):
-        M = np.asarray(nx.to_numpy_matrix(G))
+        M = nx.to_numpy_array(G)  # np.asarray(nx.to_numpy_matrix(G))
         c = conn_degree_graph(M)
         return create_centrality_dict(G, c)
 
